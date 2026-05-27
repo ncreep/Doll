@@ -10,6 +10,10 @@ class StatusBarController {
     private var isDark = false
     private var latestBadgeText = ""
     private var latestMessageCount = 0
+    private var isHidden = false
+    private var positionDefaultsKey: String?
+    private var positionBackupKey: String?
+    private var savedPosition: Any?
 
     private var giantBadgeController = GiantBadgeViewController()
     private var giantBadgePanel = NSPanel(contentRect: NSRect(origin: .zero, size: defaultWindowSize),
@@ -100,7 +104,20 @@ class StatusBarController {
         }
 
         let appName = app.appName
-        statusItem.autosaveName = "Doll_\(app.bundleId)"
+        let autosaveName = "Doll_\(app.bundleId)"
+        positionDefaultsKey = "NSStatusItem Preferred Position \(autosaveName)"
+        positionBackupKey = "Doll_SavedPosition_\(app.bundleId)"
+        // Re-seed the OS position from our own backup before macOS reads it (it reads when
+        // the item is given its autosaveName), so a pinned slot survives a Doll restart or
+        // reboot even when the monitored app was closed at the time — macOS discards its own
+        // copy whenever the item is hidden.
+        if let positionBackupKey, let backup = UserDefaults.standard.object(forKey: positionBackupKey) {
+            savedPosition = backup
+            if let positionDefaultsKey, UserDefaults.standard.object(forKey: positionDefaultsKey) == nil {
+                UserDefaults.standard.set(backup, forKey: positionDefaultsKey)
+            }
+        }
+        statusItem.autosaveName = autosaveName
         updateBadgeText(nil)
 
         guard let monitoredAppIcon = monitoredAppIcon else {
@@ -116,6 +133,7 @@ class StatusBarController {
             if appIsNotRunningAndIconShouldBeHidden || badgeIsEmptyAndIconShouldBeHidden {
                 self?.hideStatusBar()
             } else {
+                self?.showStatusBar()
                 let currentIsDark = self?.statusItem.button?.effectiveAppearance.name.rawValue.lowercased().contains("dark") ?? false
                 if(self?.isDark != currentIsDark) {
                     self?.isDark = currentIsDark
@@ -145,10 +163,34 @@ class StatusBarController {
     }
 
     func hideStatusBar() {
+        guard !isHidden else { return }
+        isHidden = true
+        // Remember the OS-managed menu-bar slot before hiding. Setting isVisible = false
+        // makes macOS discard the saved position (FB9052637), so we snapshot it — in memory
+        // and in our own default, so it also survives a Doll restart / reboot — and write it
+        // back in showStatusBar() / monitorApp() before the item reappears.
+        // https://github.com/feedback-assistant/reports/issues/200
+        if let positionDefaultsKey, let pos = UserDefaults.standard.object(forKey: positionDefaultsKey) {
+            savedPosition = pos
+            if let positionBackupKey {
+                UserDefaults.standard.set(pos, forKey: positionBackupKey)
+            }
+        }
         statusItem.isVisible = false
     }
 
+    func showStatusBar() {
+        guard isHidden else { return }
+        isHidden = false
+        if let positionDefaultsKey, let savedPosition {
+            UserDefaults.standard.set(savedPosition, forKey: positionDefaultsKey)
+        }
+        statusItem.isVisible = true
+        refreshIcon()
+    }
+
     func updateBadgeText(_ text: String?, force: Bool = false) {
+        guard !isHidden else { return }
         statusItem.isVisible = true
 
         guard !AppSettings.showOnlyAppIcon else {
