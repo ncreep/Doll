@@ -1,3 +1,8 @@
+This is a fork of [xiaogdgenuine/Doll](https://github.com/xiaogdgenuine/Doll) with
+[upstream PR #71](https://github.com/xiaogdgenuine/Doll/pull/71) — preserve menu bar
+icon position when hiding (FB9052637) — cherry-picked in, since it hasn't been merged
+upstream yet. CI builds and publishes an ad-hoc-signed release on every version tag.
+
 # Doll is a Mac app that help you catch up important messages!
 
 In **macOS**, It feels really great when you hide the **Dock**, open a **full screen** window and focus on your task.
