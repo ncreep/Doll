@@ -1,0 +1,46 @@
+name: Build and release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # SwiftUI-Introspect is referenced via an SSH URL in the project file;
+      # anonymous SSH clones fail in CI, so resolve it over HTTPS instead.
+      - name: Resolve SPM packages over HTTPS
+        run: git config --global url."https://github.com/".insteadOf "git@github.com:"
+
+      - name: Build (ad-hoc signed, no provisioning needed)
+        run: |
+          xcodebuild \
+            -project Doll.xcodeproj \
+            -scheme Doll \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="-" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=YES \
+            build
+
+      - name: Package app
+        run: |
+          app="build/Build/Products/Release/Doll.app"
+          ditto -c -k --sequesterRsrc --keepParent "$app" Doll.zip
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" Doll.zip \
+            --title "${{ github.ref_name }}" \
+            --notes "Ad-hoc-signed build of ncreep/Doll@${{ github.sha }}, including the upstream menu-bar-position fix (https://github.com/xiaogdgenuine/Doll/pull/71)."
